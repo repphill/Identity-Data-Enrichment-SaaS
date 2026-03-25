@@ -8,7 +8,7 @@ import stripe
 # 🔥 IMPORT YOUR ENRICHMENT LOGIC
 from enrichment import enrich_email
 
-# 🔥 FIREBASE AUTH
+# 🔐 FIREBASE
 import firebase_admin
 from firebase_admin import credentials, auth
 
@@ -21,9 +21,9 @@ firebase_admin.initialize_app(cred)
 # =========================
 # 💳 STRIPE SETUP
 # =========================
-stripe.api_key = "sk_test_YOUR_SECRET_KEY"  # 🔥 REPLACE WITH YOUR KEY
+stripe.api_key = "sk_test_YOUR_SECRET_KEY"  # 🔥 sk_test_51TF0IQQrPUguvXjd6OPZG8Oh2nk9Ovdgg9Yp6KJXHLsS5ziqi4MWV3xRJB0BchiuHpwVytx4cU3v57GudPHOvrPY00S0CmNOjq
 
-PRICE_ID = "price_1TF0M8Jrm29WCuxScCITllS1"  # ✅ YOUR PRICE ID
+PRICE_ID = "price_1TF0M8Jrm29WCuxScCITllS1"
 
 # =========================
 # 🚀 FASTAPI INIT
@@ -39,7 +39,7 @@ app.add_middleware(
 )
 
 # =========================
-# 🔐 VERIFY TOKEN
+# 🔐 VERIFY USER TOKEN
 # =========================
 def verify_token(request: Request):
     auth_header = request.headers.get("Authorization")
@@ -56,10 +56,10 @@ def verify_token(request: Request):
 
 
 # =========================
-# 💳 CHECK IF USER IS PAID (TEMP)
+# 💳 TEMP PAYWALL (TEST ONLY)
 # =========================
 def is_paid_user(user):
-    # 🔥 TEMP: only allow your test user
+    # 🔥 TEMP: only allow this email
     return user.get("email") == "test@test.com"
 
 
@@ -72,7 +72,7 @@ def root():
 
 
 # =========================
-# 💳 CREATE STRIPE CHECKOUT
+# 💳 STRIPE CHECKOUT
 # =========================
 @app.get("/create-checkout")
 def create_checkout():
