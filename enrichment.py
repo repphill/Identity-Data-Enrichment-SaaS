@@ -66,35 +66,34 @@ def extract_ranked_links(results, company):
 
 
 # 🌐 SOCIAL SELECTION (RELAXED)
-def find_social_links(links):
-    socials = []
+def find_social_links(links, company):
+    company_lower = company.lower()
+    socials = {}
 
     for link in links:
         l = link.lower()
 
-        # ❌ Skip junk pages
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
             continue
 
+        # LinkedIn
         if "linkedin.com/company" in l:
-            socials.append({"platform": "LinkedIn", "url": link})
+            socials["LinkedIn"] = link
 
+        # Twitter/X (prefer exact match)
         elif "twitter.com" in l or "x.com" in l:
-            socials.append({"platform": "Twitter/X", "url": link})
+            if f"/{company_lower}" in l:
+                socials["Twitter/X"] = link
 
+        # Facebook
         elif "facebook.com" in l:
-            socials.append({"platform": "Facebook", "url": link})
+            socials["Facebook"] = link
 
+        # Instagram
         elif "instagram.com" in l:
-            socials.append({"platform": "Instagram", "url": link})
+            socials["Instagram"] = link
 
-    # Deduplicate by platform
-    unique = {}
-    for s in socials:
-        if s["platform"] not in unique:
-            unique[s["platform"]] = s
-
-    return list(unique.values())
+    return [{"platform": k, "url": v} for k, v in socials.items()]
 
 # 🎥 YOUTUBE (RELAXED)
 def find_youtube(links):
