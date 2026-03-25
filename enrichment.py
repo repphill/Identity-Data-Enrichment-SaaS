@@ -1,6 +1,6 @@
 import requests
 
-SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
+SERP_API_KEY = "322a4b39f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
 
 # 🔍 Search
@@ -22,67 +22,94 @@ def search_google(query):
         return []
 
 
-# 🔗 Extract links
-def extract_links(results):
-    return [r.get("link") for r in results if r.get("link")]
+# 🧠 SCORE LINKS (KEY UPGRADE)
+def score_link(link, company):
+    l = link.lower()
+    company = company.lower()
+
+    score = 0
+
+    if company in l:
+        score += 50
+
+    if f"/{company}" in l:
+        score += 30
+
+    if "official" in l:
+        score += 20
+
+    if "youtube.com/@" + company in l:
+        score += 40
+
+    # Penalize junk
+    if any(x in l for x in ["video", "groups", "posts", "news"]):
+        score -= 50
+
+    if any(x in l for x in ["fan", "unofficial"]):
+        score -= 100
+
+    return score
 
 
-# 🌐 STRICT SOCIAL FILTER (FINAL)
-def find_social_links(links, company):
-    socials = {}
-    company_lower = company.lower()
+# 🔗 Extract + rank best links
+def extract_best_links(results, company):
+    scored = []
 
-    for link in links:
-        l = link.lower()
-
-        # ❌ Skip junk
-        if any(x in l for x in ["group", "search", "/posts/", "unofficial", "fan"]):
+    for r in results:
+        link = r.get("link")
+        if not link:
             continue
 
-        # ✅ LinkedIn (pick best only)
-        if "linkedin.com/company" in l:
-            if company_lower in l and "linkedin.com/company/" + company_lower in l:
-                socials["LinkedIn"] = link
+        s = score_link(link, company)
+        scored.append((s, link))
 
-        # ✅ Twitter/X
-        elif "twitter.com" in l or "x.com" in l:
-            if "/" + company_lower in l:
-                socials["Twitter/X"] = link
+    # Sort best first
+    scored.sort(reverse=True)
 
-        # ✅ Facebook (only clean official-style pages)
-        elif "facebook.com" in l:
-            if company_lower in l and "groups" not in l:
-                socials["Facebook"] = link
-
-        # ✅ Instagram
-        elif "instagram.com" in l:
-            if company_lower in l:
-                socials["Instagram"] = link
-
-    return [{"platform": k, "url": v} for k, v in socials.items()]
+    return [link for _, link in scored]
 
 
-# 🎥 YouTube filter (deduplicated)
-def find_youtube(links, company):
-    company_lower = company.lower()
-    yt = []
+# 🌐 PICK BEST SOCIAL PER PLATFORM
+def find_best_socials(links, company):
+    best = {}
 
     for link in links:
         l = link.lower()
 
-        if "youtube.com" in l and company_lower in l:
-            yt.append(link)
+        if "linkedin.com/company" in l and "LinkedIn" not in best:
+            best["LinkedIn"] = link
 
-    # Deduplicate by channel name structure
-    unique = list(set(yt))
+        elif ("twitter.com" in l or "x.com" in l) and "Twitter/X" not in best:
+            best["Twitter/X"] = link
 
-    # Prefer @handle over /channel/
-    unique.sort(key=lambda x: "@" not in x)
+        elif "facebook.com" in l and "Facebook" not in best:
+            if "video" not in l:
+                best["Facebook"] = link
 
-    return unique[:1]  # keep only best
+        elif "instagram.com" in l and "Instagram" not in best:
+            best["Instagram"] = link
+
+    return [{"platform": k, "url": v} for k, v in best.items()]
 
 
-# 🎥 Extract YouTube name
+# 🎥 PICK BEST YOUTUBE
+def find_best_youtube(links, company):
+    for link in links:
+        l = link.lower()
+
+        # Prefer @handle
+        if f"youtube.com/@{company}" in l:
+            return [link]
+
+    # fallback to any youtube
+    for link in links:
+        if "youtube.com" in link:
+            return [link]
+
+    return []
+
+
+# 🎥 Extract channel name
 def get_youtube_details(link):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -115,15 +142,15 @@ def enrich_email(email):
     results = []
 
     results += search_google(f"{company} linkedin company")
-    results += search_google(f"{company} official twitter")
-    results += search_google(f"{company} official facebook")
+    results += search_google(f"{company} twitter")
+    results += search_google(f"{company} facebook")
     results += search_google(f"{company} instagram")
-    results += search_google(f"{company} youtube official")
+    results += search_google(f"{company} youtube")
 
-    links = extract_links(results)
+    ranked_links = extract_best_links(results, company)
 
-    socials = find_social_links(links, company)
-    youtube_links = find_youtube(links, company)
+    socials = find_best_socials(ranked_links, company)
+    youtube_links = find_best_youtube(ranked_links, company)
 
     youtube = [get_youtube_details(link) for link in youtube_links]
 
