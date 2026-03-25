@@ -72,13 +72,17 @@ def find_social_links(links):
     for link in links:
         l = link.lower()
 
+        # ❌ Skip junk pages
+        if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
+            continue
+
         if "linkedin.com/company" in l:
             socials.append({"platform": "LinkedIn", "url": link})
 
         elif "twitter.com" in l or "x.com" in l:
             socials.append({"platform": "Twitter/X", "url": link})
 
-        elif "facebook.com" in l and "group" not in l:
+        elif "facebook.com" in l:
             socials.append({"platform": "Facebook", "url": link})
 
         elif "instagram.com" in l:
@@ -91,7 +95,6 @@ def find_social_links(links):
             unique[s["platform"]] = s
 
     return list(unique.values())
-
 
 # 🎥 YOUTUBE (RELAXED)
 def find_youtube(links):
