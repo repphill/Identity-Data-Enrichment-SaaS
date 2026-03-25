@@ -1,35 +1,36 @@
 import requests
-from urllib.parse import unquote
+
+# 🔐 YOUR SERP API KEY
+SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
 
-# 🔍 DuckDuckGo search (HTML endpoint)
-def search_web(query):
-    url = "https://duckduckgo.com/html/"
-    params = {"q": query}
+# 🔍 Google search via SerpAPI
+def search_google(query):
+    url = "https://serpapi.com/search"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
+    params = {
+        "q": query,
+        "api_key": SERP_API_KEY,
+        "engine": "google",
+        "num": 5
     }
 
     try:
-        res = requests.post(url, data=params, headers=headers)
-        return res.text
+        res = requests.get(url, params=params)
+        data = res.json()
+        return data.get("organic_results", [])
     except:
-        return ""
+        return []
 
 
-# 🔗 Extract links (decode DuckDuckGo redirects)
-def extract_links(html):
+# 🔗 Extract links
+def extract_links(results):
     links = []
 
-    parts = html.split("uddg=")
-
-    for part in parts[1:]:
-        url = part.split("&")[0]
-        decoded = unquote(url)
-
-        if decoded.startswith("http"):
-            links.append(decoded)
+    for r in results:
+        link = r.get("link")
+        if link:
+            links.append(link)
 
     return links
 
@@ -62,24 +63,23 @@ def find_youtube(links):
     return yt
 
 
-# 🧠 MAIN ENRICHMENT FUNCTION (UPGRADED)
+# 🧠 MAIN FUNCTION
 def enrich_email(email):
     domain = email.split("@")[-1]
     company = domain.replace(".com", "")
 
-    html = ""
+    results = []
 
-    # 🔥 TARGETED PLATFORM SEARCHES (KEY UPGRADE)
-    html += search_web(f"site:linkedin.com {company}")
-    html += search_web(f"site:twitter.com {company}")
-    html += search_web(f"site:facebook.com {company}")
-    html += search_web(f"site:instagram.com {company}")
-    html += search_web(f"site:youtube.com {company}")
+    # 🔥 Strong targeted queries
+    results += search_google(f"{company} official website")
+    results += search_google(f"{company} linkedin")
+    results += search_google(f"{company} twitter")
+    results += search_google(f"{company} facebook")
+    results += search_google(f"{company} instagram")
+    results += search_google(f"{company} youtube")
 
-    # Extract links
-    links = extract_links(html)
+    links = extract_links(results)
 
-    # Find relevant data
     socials = find_social_links(links)
     youtube = find_youtube(links)
 
@@ -87,7 +87,7 @@ def enrich_email(email):
     socials = list({s['url']: s for s in socials}.values())
     youtube = list(set(youtube))
 
-    # Confidence scoring
+    # Confidence logic
     confidence = "high" if socials or youtube else "low"
 
     return {
