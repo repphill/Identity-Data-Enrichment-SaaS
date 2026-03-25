@@ -1,4 +1,5 @@
 import requests
+import re
 
 SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
@@ -23,7 +24,7 @@ def search_google(query):
         return []
 
 
-# 🧠 Score links (balanced)
+# 🧠 Score links
 def score_link(link, company):
     l = link.lower()
     company = company.lower()
@@ -39,11 +40,11 @@ def score_link(link, company):
     if "official" in l:
         score += 10
 
-    # Light penalties (not too aggressive)
+    # Light penalties
     if any(x in l for x in ["video", "news"]):
         score -= 10
 
-    if "group" in l or "marketplace" in l:
+    if any(x in l for x in ["group", "marketplace"]):
         score -= 20
 
     return score
@@ -66,7 +67,7 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 Social selection (FIXED VERSION)
+# 🌐 Social selection
 def find_social_links(links, company):
     company_lower = company.lower()
 
@@ -84,7 +85,7 @@ def find_social_links(links, company):
         if "linkedin.com/company" in l:
             best["LinkedIn"] = link
 
-        # Twitter/X (prefer exact match)
+        # Twitter/X
         elif "twitter.com" in l or "x.com" in l:
             if f"/{company_lower}" in l:
                 best["Twitter/X"] = link
@@ -99,7 +100,7 @@ def find_social_links(links, company):
         elif "instagram.com" in l:
             best["Instagram"] = link
 
-    # Merge fallback if needed
+    # Add fallback if needed
     for k, v in fallback.items():
         if k not in best:
             best[k] = v
@@ -108,14 +109,28 @@ def find_social_links(links, company):
 
 
 # 🎥 YouTube selection
-import re
+def find_youtube(links, company):
+    company_lower = company.lower()
 
+    # Prefer @handle
+    for link in links:
+        if f"youtube.com/@{company_lower}" in link.lower():
+            return [link]
+
+    # fallback
+    for link in links:
+        if "youtube.com" in link:
+            return [link]
+
+    return []
+
+
+# 🎥 Extract YouTube details + subscribers
 def get_youtube_details(link):
     try:
-        # 🔥 Clean URL
+        # Clean URL
         if "/playlists" in link:
             link = link.split("/playlists")[0]
-
         if "/videos" in link:
             link = link.split("/videos")[0]
 
@@ -124,15 +139,14 @@ def get_youtube_details(link):
 
         html = res.text
 
-        # 🎯 Extract channel name
+        # Channel name
         name = "YouTube Channel"
         if "<title>" in html:
             name = html.split("<title>")[1].split("</title>")[0]
             name = name.replace("- YouTube", "").strip()
 
-        # 🎯 Extract subscriber count
+        # Subscriber count
         subs = "Unknown"
-
         match = re.search(r'"subscriberCountText".*?"simpleText":"([^"]+)"', html)
         if match:
             subs = match.group(1)
@@ -151,7 +165,7 @@ def get_youtube_details(link):
         }
 
 
-# 🧠 MAIN FUNCTION (FIXED CALL)
+# 🧠 MAIN FUNCTION
 def enrich_email(email):
     domain = email.split("@")[-1]
     company = domain.replace(".com", "")
@@ -166,7 +180,6 @@ def enrich_email(email):
 
     ranked_links = extract_ranked_links(results, company)
 
-    # ✅ FIXED HERE
     socials = find_social_links(ranked_links, company)
     youtube_links = find_youtube(ranked_links, company)
 
