@@ -66,7 +66,23 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 Social selection (HIGH ACCURACY)
+# 🔥 CLEAN URL (KEY FUNCTION)
+def clean_url(url):
+    # Remove query params
+    url = url.split("?")[0]
+
+    # Normalize LinkedIn domains
+    url = url.replace("ae.linkedin.com", "www.linkedin.com")
+    url = url.replace("rs.linkedin.com", "www.linkedin.com")
+
+    # Remove trailing slash
+    if url.endswith("/"):
+        url = url[:-1]
+
+    return url
+
+
+# 🌐 Social selection (FINAL VERSION)
 def find_social_links(links, company):
     company_lower = company.lower()
 
@@ -74,34 +90,30 @@ def find_social_links(links, company):
     fallback = {}
 
     for link in links:
+        link = clean_url(link)
         l = link.lower()
 
         # ❌ Skip junk
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
             continue
 
-        # ❌ Remove generic homepage links
-        if l.endswith(".com/") or l.endswith(".com"):
+        # ❌ Remove homepage links
+        if l.endswith(".com") or l.endswith(".com/"):
             continue
 
-        if "instagram.com/?" in l:
-            continue
-
-        # ❌ Must include company name
+        # ❌ Must include company
         if company_lower not in l:
             continue
 
         # ❌ Remove fake variations
-        bad_words = ["band", "club", "fans", "group", "owners"]
+        bad_words = ["band", "club", "fans", "owners", "unofficial"]
         if any(word in l for word in bad_words):
             continue
 
-        # LinkedIn (STRICT MATCH FIRST)
+        # LinkedIn (STRICT)
         if "linkedin.com/company" in l:
             if f"/{company_lower}" in l:
                 best["LinkedIn"] = link
-            elif "LinkedIn" not in best:
-                fallback["LinkedIn"] = link
 
         # Twitter/X
         elif "twitter.com" in l or "x.com" in l:
@@ -110,13 +122,13 @@ def find_social_links(links, company):
             elif "Twitter/X" not in fallback:
                 fallback["Twitter/X"] = link
 
-        # Facebook
+        # Facebook (STRICT)
         elif "facebook.com" in l:
             parts = l.split("facebook.com/")
             if len(parts) > 1 and company_lower in parts[1]:
                 best["Facebook"] = link
 
-        # Instagram
+        # Instagram (STRICT)
         elif "instagram.com" in l:
             parts = l.split("instagram.com/")
             if len(parts) > 1 and company_lower in parts[1]:
@@ -188,7 +200,7 @@ def enrich_email(email):
 
     results = []
 
-    # 🔥 Improved queries (KEY UPGRADE)
+    # 🔥 Improved queries
     results += search_google(f"{company} official linkedin company")
     results += search_google(f"{company} official twitter")
     results += search_google(f"{company} official facebook")
