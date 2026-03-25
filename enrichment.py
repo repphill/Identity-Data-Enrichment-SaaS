@@ -24,7 +24,7 @@ def search_google(query):
         return []
 
 
-# 🧠 Score links (balanced)
+# 🧠 Score links
 def score_link(link, company):
     l = link.lower()
     company = company.lower()
@@ -40,7 +40,6 @@ def score_link(link, company):
     if "official" in l:
         score += 10
 
-    # Light penalties
     if any(x in l for x in ["video", "news"]):
         score -= 10
 
@@ -67,7 +66,7 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 Social selection (clean + smart)
+# 🌐 Social selection (UPDATED FILTERS)
 def find_social_links(links, company):
     company_lower = company.lower()
 
@@ -79,6 +78,20 @@ def find_social_links(links, company):
 
         # ❌ Skip junk
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
+            continue
+
+        # ❌ Remove homepage / generic links
+        if l.endswith(".com/") or l.endswith(".com"):
+            continue
+
+        if "instagram.com/?" in l:
+            continue
+
+        if "facebook.com/" in l and l.count("/") <= 3:
+            continue
+
+        # ❌ Must include company name (key upgrade)
+        if company_lower not in l:
             continue
 
         # LinkedIn
@@ -112,14 +125,12 @@ def find_social_links(links, company):
 def find_youtube(links, company):
     company_lower = company.lower()
 
-    # Prefer @handle
     for link in links:
         if f"youtube.com/@{company_lower}" in link.lower():
             return [link]
 
-    # fallback
     for link in links:
-        if "youtube.com" in link:
+        if "youtube.com" in link and company_lower in link.lower():
             return [link]
 
     return []
@@ -128,7 +139,6 @@ def find_youtube(links, company):
 # 🎥 Extract YouTube details + subscribers
 def get_youtube_details(link):
     try:
-        # 🔥 CLEAN URL
         for suffix in ["/shorts", "/videos", "/playlists"]:
             if suffix in link:
                 link = link.split(suffix)[0]
@@ -138,13 +148,11 @@ def get_youtube_details(link):
 
         html = res.text
 
-        # 🎯 Channel name
         name = "YouTube Channel"
         if "<title>" in html:
             name = html.split("<title>")[1].split("</title>")[0]
             name = name.replace("- YouTube", "").strip()
 
-        # 🎯 Subscriber count
         subs = "Unknown"
         match = re.search(r'"subscriberCountText".*?"simpleText":"([^"]+)"', html)
         if match:
