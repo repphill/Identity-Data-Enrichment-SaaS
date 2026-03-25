@@ -1,10 +1,9 @@
 import requests
 
-# 🔐 Replace this if you rotate your key later
 SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
 
-# 🔍 Search via SerpAPI
+# 🔍 Search
 def search_google(query):
     url = "https://serpapi.com/search"
 
@@ -19,8 +18,7 @@ def search_google(query):
         res = requests.get(url, params=params)
         data = res.json()
         return data.get("organic_results", [])
-    except Exception as e:
-        print("ERROR:", e)
+    except:
         return []
 
 
@@ -29,7 +27,7 @@ def extract_links(results):
     return [r.get("link") for r in results if r.get("link")]
 
 
-# 🌐 CLEAN SOCIAL FILTER (FINAL VERSION)
+# 🌐 STRICT SOCIAL FILTER (FINAL)
 def find_social_links(links, company):
     socials = {}
     company_lower = company.lower()
@@ -38,24 +36,20 @@ def find_social_links(links, company):
         l = link.lower()
 
         # ❌ Skip junk
-        if "group" in l or "search" in l or "/posts/" in l:
+        if any(x in l for x in ["group", "search", "/posts/", "unofficial", "fan"]):
             continue
 
-        # ❌ Skip unofficial pages
-        if "unofficial" in l or "fan" in l:
-            continue
-
-        # ✅ LinkedIn (best match)
+        # ✅ LinkedIn (pick best only)
         if "linkedin.com/company" in l:
-            if company_lower in l:
+            if company_lower in l and "linkedin.com/company/" + company_lower in l:
                 socials["LinkedIn"] = link
 
         # ✅ Twitter/X
         elif "twitter.com" in l or "x.com" in l:
-            if company_lower in l:
+            if "/" + company_lower in l:
                 socials["Twitter/X"] = link
 
-        # ✅ Facebook
+        # ✅ Facebook (only clean official-style pages)
         elif "facebook.com" in l:
             if company_lower in l and "groups" not in l:
                 socials["Facebook"] = link
@@ -68,22 +62,27 @@ def find_social_links(links, company):
     return [{"platform": k, "url": v} for k, v in socials.items()]
 
 
-# 🎥 YouTube detection (clean)
+# 🎥 YouTube filter (deduplicated)
 def find_youtube(links, company):
-    yt = []
     company_lower = company.lower()
+    yt = []
 
     for link in links:
         l = link.lower()
 
-        if "youtube.com" in l:
-            if company_lower in l:
-                yt.append(link)
+        if "youtube.com" in l and company_lower in l:
+            yt.append(link)
 
-    return list(set(yt))[:2]
+    # Deduplicate by channel name structure
+    unique = list(set(yt))
+
+    # Prefer @handle over /channel/
+    unique.sort(key=lambda x: "@" not in x)
+
+    return unique[:1]  # keep only best
 
 
-# 🎥 Extract YouTube channel name
+# 🎥 Extract YouTube name
 def get_youtube_details(link):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -115,7 +114,6 @@ def enrich_email(email):
 
     results = []
 
-    # 🔥 Strong targeted queries
     results += search_google(f"{company} linkedin company")
     results += search_google(f"{company} official twitter")
     results += search_google(f"{company} official facebook")
@@ -127,7 +125,6 @@ def enrich_email(email):
     socials = find_social_links(links, company)
     youtube_links = find_youtube(links, company)
 
-    # 🎥 Get YouTube channel details
     youtube = [get_youtube_details(link) for link in youtube_links]
 
     confidence = "high" if socials or youtube else "low"
