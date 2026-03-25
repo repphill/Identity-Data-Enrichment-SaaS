@@ -108,6 +108,8 @@ def find_social_links(links, company):
 
 
 # 🎥 YouTube selection
+import re
+
 def get_youtube_details(link):
     try:
         # 🔥 Clean URL
@@ -121,26 +123,31 @@ def get_youtube_details(link):
         res = requests.get(link, headers=headers, timeout=5)
 
         html = res.text
-        name = "YouTube Channel"
 
+        # 🎯 Extract channel name
+        name = "YouTube Channel"
         if "<title>" in html:
             name = html.split("<title>")[1].split("</title>")[0]
             name = name.replace("- YouTube", "").strip()
 
+        # 🎯 Extract subscriber count
+        subs = "Unknown"
+
+        match = re.search(r'"subscriberCountText".*?"simpleText":"([^"]+)"', html)
+        if match:
+            subs = match.group(1)
+
         return {
             "url": link,
-            "name": name
+            "name": name,
+            "subscribers": subs
         }
 
     except:
         return {
             "url": link,
-            "name": "Unknown"
-        }
-    except:
-        return {
-            "url": link,
-            "name": "Unknown"
+            "name": "Unknown",
+            "subscribers": "Unknown"
         }
 
 
