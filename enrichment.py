@@ -24,7 +24,7 @@ def search_google(query):
         return []
 
 
-# 🧠 Score links
+# 🧠 Score links (balanced)
 def score_link(link, company):
     l = link.lower()
     company = company.lower()
@@ -67,7 +67,7 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 Social selection
+# 🌐 Social selection (clean + smart)
 def find_social_links(links, company):
     company_lower = company.lower()
 
@@ -125,7 +125,7 @@ def find_youtube(links, company):
     return []
 
 
-# 🎥 Extract YouTube details + subscribers (FINAL FIX)
+# 🎥 Extract YouTube details + subscribers
 def get_youtube_details(link):
     try:
         # 🔥 CLEAN URL
