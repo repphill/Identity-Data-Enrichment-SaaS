@@ -108,25 +108,15 @@ def find_social_links(links, company):
 
 
 # 🎥 YouTube selection
-def find_youtube(links, company):
-    company_lower = company.lower()
-
-    # Prefer @handle
-    for link in links:
-        if f"youtube.com/@{company_lower}" in link.lower():
-            return [link]
-
-    # fallback
-    for link in links:
-        if "youtube.com" in link:
-            return [link]
-
-    return []
-
-
-# 🎥 Extract channel name
 def get_youtube_details(link):
     try:
+        # 🔥 Clean URL
+        if "/playlists" in link:
+            link = link.split("/playlists")[0]
+
+        if "/videos" in link:
+            link = link.split("/videos")[0]
+
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(link, headers=headers, timeout=5)
 
@@ -142,6 +132,11 @@ def get_youtube_details(link):
             "name": name
         }
 
+    except:
+        return {
+            "url": link,
+            "name": "Unknown"
+        }
     except:
         return {
             "url": link,
