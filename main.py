@@ -1,77 +1,168 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import csv
-import uuid
+import io
+import stripe
 
+# 🔥 IMPORT YOUR ENRICHMENT LOGIC
 from enrichment import enrich_email
 
+# 🔥 FIREBASE AUTH
+import firebase_admin
+from firebase_admin import credentials, auth
+
+# =========================
+# 🔐 FIREBASE SETUP
+# =========================
+cred = credentials.Certificate("firebase-key.json")
+firebase_admin.initialize_app(cred)
+
+# =========================
+# 💳 STRIPE SETUP
+# =========================
+stripe.api_key = "sk_test_YOUR_SECRET_KEY"  # 🔥 REPLACE WITH YOUR KEY
+
+PRICE_ID = "price_1TF0M8Jrm29WCuxScCITllS1"  # ✅ YOUR PRICE ID
+
+# =========================
+# 🚀 FASTAPI INIT
+# =========================
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# 🔹 Health check (optional but useful)
+# =========================
+# 🔐 VERIFY TOKEN
+# =========================
+def verify_token(request: Request):
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    try:
+        token = auth_header.split(" ")[1]
+        decoded = auth.verify_id_token(token)
+        return decoded
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# =========================
+# 💳 CHECK IF USER IS PAID (TEMP)
+# =========================
+def is_paid_user(user):
+    # 🔥 TEMP: only allow your test user
+    return user.get("email") == "test@test.com"
+
+
+# =========================
+# 🏠 ROOT
+# =========================
 @app.get("/")
 def root():
-    return {"status": "API is running"}
+    return {"message": "API is running"}
 
 
-# 🔹 Single enrichment
+# =========================
+# 💳 CREATE STRIPE CHECKOUT
+# =========================
+@app.get("/create-checkout")
+def create_checkout():
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price": PRICE_ID,
+            "quantity": 1,
+        }],
+        mode="subscription",
+        success_url="https://your-vercel-app.vercel.app",
+        cancel_url="https://your-vercel-app.vercel.app",
+    )
+
+    return {"url": session.url}
+
+
+# =========================
+# 🔍 SINGLE ENRICH
+# =========================
 @app.post("/enrich")
-async def enrich(data: dict):
-    return enrich_email(data["email"])
+async def enrich(request: Request, email: str):
+    user = verify_token(request)
+
+    if not is_paid_user(user):
+        raise HTTPException(status_code=403, detail="Upgrade required")
+
+    return enrich_email(email)
 
 
-# 🔥 BULK CSV ENRICHMENT
+# =========================
+# 📂 BULK ENRICH
+# =========================
 @app.post("/bulk-enrich")
-async def bulk_enrich(file: UploadFile = File(...)):
+async def bulk_enrich(request: Request, file: UploadFile = File(...)):
+    user = verify_token(request)
 
-    input_path = f"/tmp/{uuid.uuid4()}.csv"
-    output_path = f"/tmp/output_{uuid.uuid4()}.csv"
+    if not is_paid_user(user):
+        raise HTTPException(status_code=403, detail="Upgrade required")
 
-    # Save uploaded file
-    with open(input_path, "wb") as f:
-        f.write(await file.read())
+    content = await file.read()
+    decoded = content.decode("utf-8").splitlines()
+    reader = csv.DictReader(decoded)
 
-    results = []
+    output = io.StringIO()
+    writer = csv.writer(output)
 
-    # Read CSV
-    with open(input_path, newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
+    # CSV HEADER
+    writer.writerow([
+        "email",
+        "company",
+        "linkedin",
+        "twitter",
+        "instagram",
+        "facebook",
+        "youtube",
+        "subscribers"
+    ])
 
-        for row in reader:
-            email = row.get("email")
+    for row in reader:
+        email = row.get("email")
 
-            if not email:
-                continue
+        if not email:
+            continue
 
-            try:
-                data = enrich_email(email)
+        data = enrich_email(email)
 
-                socials = {s["platform"]: s["url"] for s in data["social_profiles"]}
-                youtube = data["youtube_channels"][0] if data["youtube_channels"] else {}
+        socials = {s["platform"]: s["url"] for s in data["social_profiles"]}
 
-                results.append({
-                    "email": email,
-                    "company": data["company"],
-                    "linkedin": socials.get("LinkedIn", ""),
-                    "twitter": socials.get("Twitter/X", ""),
-                    "instagram": socials.get("Instagram", ""),
-                    "facebook": socials.get("Facebook", ""),
-                    "youtube": youtube.get("url", ""),
-                    "subscribers": youtube.get("subscribers", ""),
-                })
+        youtube = data["youtube_channels"]
+        yt_url = youtube[0]["url"] if youtube else ""
+        yt_subs = youtube[0]["subscribers"] if youtube else ""
 
-            except Exception as e:
-                print("ERROR processing:", email, e)
+        writer.writerow([
+            email,
+            data["company"],
+            socials.get("LinkedIn", ""),
+            socials.get("Twitter/X", ""),
+            socials.get("Instagram", ""),
+            socials.get("Facebook", ""),
+            yt_url,
+            yt_subs
+        ])
 
-    # Write output CSV
-    with open(output_path, "w", newline="") as csvfile:
-        fieldnames = [
-            "email", "company", "linkedin", "twitter",
-            "instagram", "facebook", "youtube", "subscribers"
-        ]
+    output.seek(0)
 
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(results)
-
-    return FileResponse(output_path, filename="enriched_results.csv")
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=enriched_results.csv"
+        },
+    )
