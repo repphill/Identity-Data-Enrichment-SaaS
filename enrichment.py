@@ -68,32 +68,42 @@ def extract_ranked_links(results, company):
 # 🌐 SOCIAL SELECTION (RELAXED)
 def find_social_links(links, company):
     company_lower = company.lower()
-    socials = {}
+
+    best = {}
+    fallback = {}
 
     for link in links:
         l = link.lower()
 
+        # ❌ Skip junk
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
             continue
 
         # LinkedIn
         if "linkedin.com/company" in l:
-            socials["LinkedIn"] = link
+            best["LinkedIn"] = link
 
-        # Twitter/X (prefer exact match)
+        # Twitter/X (PRIORITY FIX)
         elif "twitter.com" in l or "x.com" in l:
             if f"/{company_lower}" in l:
-                socials["Twitter/X"] = link
+                best["Twitter/X"] = link  # exact match wins
+            elif "Twitter/X" not in fallback:
+                fallback["Twitter/X"] = link  # backup option
 
         # Facebook
         elif "facebook.com" in l:
-            socials["Facebook"] = link
+            best["Facebook"] = link
 
         # Instagram
         elif "instagram.com" in l:
-            socials["Instagram"] = link
+            best["Instagram"] = link
 
-    return [{"platform": k, "url": v} for k, v in socials.items()]
+    # Merge best + fallback
+    for k, v in fallback.items():
+        if k not in best:
+            best[k] = v
+
+    return [{"platform": k, "url": v} for k, v in best.items()]
 
 # 🎥 YOUTUBE (RELAXED)
 def find_youtube(links):
