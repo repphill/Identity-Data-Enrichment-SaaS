@@ -2,7 +2,7 @@ import requests
 from urllib.parse import unquote
 
 
-# 🔍 DuckDuckGo search (reliable)
+# 🔍 DuckDuckGo search (HTML endpoint)
 def search_web(query):
     url = "https://duckduckgo.com/html/"
     params = {"q": query}
@@ -18,7 +18,7 @@ def search_web(query):
         return ""
 
 
-# 🔗 Extract real links (FIXED — decodes DuckDuckGo redirects)
+# 🔗 Extract links (decode DuckDuckGo redirects)
 def extract_links(html):
     links = []
 
@@ -62,24 +62,24 @@ def find_youtube(links):
     return yt
 
 
-# 🧠 MAIN ENRICHMENT FUNCTION
+# 🧠 MAIN ENRICHMENT FUNCTION (UPGRADED)
 def enrich_email(email):
     domain = email.split("@")[-1]
     company = domain.replace(".com", "")
 
     html = ""
 
-    # 🔥 Stronger company-based searches
-    html += search_web(f"{company} official website")
-    html += search_web(f"{company} linkedin")
-    html += search_web(f"{company} twitter")
-    html += search_web(f"{company} facebook")
-    html += search_web(f"{company} youtube")
+    # 🔥 TARGETED PLATFORM SEARCHES (KEY UPGRADE)
+    html += search_web(f"site:linkedin.com {company}")
+    html += search_web(f"site:twitter.com {company}")
+    html += search_web(f"site:facebook.com {company}")
+    html += search_web(f"site:instagram.com {company}")
+    html += search_web(f"site:youtube.com {company}")
 
     # Extract links
     links = extract_links(html)
 
-    # Find data
+    # Find relevant data
     socials = find_social_links(links)
     youtube = find_youtube(links)
 
@@ -87,11 +87,8 @@ def enrich_email(email):
     socials = list({s['url']: s for s in socials}.values())
     youtube = list(set(youtube))
 
-    # Confidence logic
-    if socials or youtube:
-        confidence = "high"
-    else:
-        confidence = "low"
+    # Confidence scoring
+    confidence = "high" if socials or youtube else "low"
 
     return {
         "email": email,
