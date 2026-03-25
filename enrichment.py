@@ -125,27 +125,26 @@ def find_youtube(links, company):
     return []
 
 
-# 🎥 Extract YouTube details + subscribers
+# 🎥 Extract YouTube details + subscribers (FINAL FIX)
 def get_youtube_details(link):
     try:
-        # Clean URL
-        if "/playlists" in link:
-            link = link.split("/playlists")[0]
-        if "/videos" in link:
-            link = link.split("/videos")[0]
+        # 🔥 CLEAN URL
+        for suffix in ["/shorts", "/videos", "/playlists"]:
+            if suffix in link:
+                link = link.split(suffix)[0]
 
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(link, headers=headers, timeout=5)
 
         html = res.text
 
-        # Channel name
+        # 🎯 Channel name
         name = "YouTube Channel"
         if "<title>" in html:
             name = html.split("<title>")[1].split("</title>")[0]
             name = name.replace("- YouTube", "").strip()
 
-        # Subscriber count
+        # 🎯 Subscriber count
         subs = "Unknown"
         match = re.search(r'"subscriberCountText".*?"simpleText":"([^"]+)"', html)
         if match:
