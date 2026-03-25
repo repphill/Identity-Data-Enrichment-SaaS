@@ -1,10 +1,10 @@
 import requests
 
-# 🔐 YOUR SERP API KEY (replace if you rotate it later)
+# 🔐 Replace this if you rotate your key later
 SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
 
-# 🔍 Google search via SerpAPI
+# 🔍 Search via SerpAPI
 def search_google(query):
     url = "https://serpapi.com/search"
 
@@ -26,71 +26,79 @@ def search_google(query):
 
 # 🔗 Extract links
 def extract_links(results):
-    links = []
-
-    for r in results:
-        link = r.get("link")
-        if link:
-            links.append(link)
-
-    return links
+    return [r.get("link") for r in results if r.get("link")]
 
 
-# 🌐 CLEAN SOCIAL FILTER (STEP 1 UPGRADE)
-def find_social_links(links):
-    socials = []
+# 🌐 CLEAN SOCIAL FILTER (FINAL VERSION)
+def find_social_links(links, company):
+    socials = {}
+    company_lower = company.lower()
 
     for link in links:
-        lower = link.lower()
+        l = link.lower()
 
-        # ❌ Remove junk
-        if "group" in lower or "search" in lower:
+        # ❌ Skip junk
+        if "group" in l or "search" in l or "/posts/" in l:
             continue
 
-        # ✅ Keep high-quality pages
-        if "linkedin.com/company" in lower:
-            socials.append({"platform": "LinkedIn", "url": link})
+        # ❌ Skip unofficial pages
+        if "unofficial" in l or "fan" in l:
+            continue
 
-        elif "twitter.com" in lower or "x.com" in lower:
-            socials.append({"platform": "Twitter/X", "url": link})
+        # ✅ LinkedIn (best match)
+        if "linkedin.com/company" in l:
+            if company_lower in l:
+                socials["LinkedIn"] = link
 
-        elif "facebook.com" in lower and ("pages" in lower or "official" in lower):
-            socials.append({"platform": "Facebook", "url": link})
+        # ✅ Twitter/X
+        elif "twitter.com" in l or "x.com" in l:
+            if company_lower in l:
+                socials["Twitter/X"] = link
 
-        elif "instagram.com" in lower:
-            socials.append({"platform": "Instagram", "url": link})
+        # ✅ Facebook
+        elif "facebook.com" in l:
+            if company_lower in l and "groups" not in l:
+                socials["Facebook"] = link
 
-    return socials
+        # ✅ Instagram
+        elif "instagram.com" in l:
+            if company_lower in l:
+                socials["Instagram"] = link
+
+    return [{"platform": k, "url": v} for k, v in socials.items()]
 
 
-# 🎥 ADVANCED YOUTUBE EXTRACTION (STEP 2 UPGRADE)
-def find_youtube(links):
+# 🎥 YouTube detection (clean)
+def find_youtube(links, company):
     yt = []
+    company_lower = company.lower()
 
     for link in links:
-        if "youtube.com" in link and ("channel" in link or "@" in link):
-            yt.append(link)
+        l = link.lower()
 
-    return yt
+        if "youtube.com" in l:
+            if company_lower in l:
+                yt.append(link)
+
+    return list(set(yt))[:2]
 
 
-# 🎥 GET YOUTUBE CHANNEL DETAILS
+# 🎥 Extract YouTube channel name
 def get_youtube_details(link):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(link, headers=headers, timeout=5)
 
         html = res.text
-
-        # Basic extraction (simple but effective)
-        title = "Unknown Channel"
+        name = "YouTube Channel"
 
         if "<title>" in html:
-            title = html.split("<title>")[1].split("</title>")[0]
+            name = html.split("<title>")[1].split("</title>")[0]
+            name = name.replace("- YouTube", "").strip()
 
         return {
             "url": link,
-            "name": title.replace("- YouTube", "").strip()
+            "name": name
         }
 
     except:
@@ -107,24 +115,20 @@ def enrich_email(email):
 
     results = []
 
-    # 🔥 Targeted queries
-    results += search_google(f"{company} linkedin")
-    results += search_google(f"{company} twitter")
-    results += search_google(f"{company} facebook official")
+    # 🔥 Strong targeted queries
+    results += search_google(f"{company} linkedin company")
+    results += search_google(f"{company} official twitter")
+    results += search_google(f"{company} official facebook")
     results += search_google(f"{company} instagram")
-    results += search_google(f"{company} youtube")
+    results += search_google(f"{company} youtube official")
 
     links = extract_links(results)
 
-    socials = find_social_links(links)
-    youtube_links = find_youtube(links)
+    socials = find_social_links(links, company)
+    youtube_links = find_youtube(links, company)
 
-    # Remove duplicates
-    socials = list({s['url']: s for s in socials}.values())
-    youtube_links = list(set(youtube_links))
-
-    # 🎥 Get YouTube details
-    youtube = [get_youtube_details(link) for link in youtube_links[:3]]
+    # 🎥 Get YouTube channel details
+    youtube = [get_youtube_details(link) for link in youtube_links]
 
     confidence = "high" if socials or youtube else "low"
 
@@ -132,7 +136,7 @@ def enrich_email(email):
         "email": email,
         "domain": domain,
         "company": company,
-        "social_profiles": socials[:5],
+        "social_profiles": socials,
         "youtube_channels": youtube,
         "confidence": confidence
     }
