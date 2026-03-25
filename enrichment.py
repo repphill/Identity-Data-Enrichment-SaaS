@@ -71,7 +71,6 @@ def find_social_links(links, company):
     company_lower = company.lower()
 
     best = {}
-    fallback = {}
 
     for link in links:
         l = link.lower()
@@ -80,43 +79,44 @@ def find_social_links(links, company):
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
             continue
 
-        # ❌ Remove homepage / generic links
+        # ❌ Remove homepage / generic
         if l.endswith(".com/") or l.endswith(".com"):
             continue
 
         if "instagram.com/?" in l:
             continue
 
-        if "facebook.com/" in l and l.count("/") <= 3:
-            continue
-
-        # ❌ Must include company name (key upgrade)
+        # ❌ STRICT MATCH: must contain company AND not random words
         if company_lower not in l:
             continue
 
-        # LinkedIn
+        # 🔥 EXTRA FILTER (KEY FIX)
+        # Avoid unrelated variations like teslaband, teslaowners, etc.
+        bad_words = ["band", "club", "fans", "group", "owners"]
+        if any(word in l for word in bad_words):
+            continue
+
+        # LinkedIn (prefer exact company page)
         if "linkedin.com/company" in l:
-            best["LinkedIn"] = link
+            if company_lower in l:
+                best["LinkedIn"] = link
 
         # Twitter/X
         elif "twitter.com" in l or "x.com" in l:
             if f"/{company_lower}" in l:
                 best["Twitter/X"] = link
-            elif "Twitter/X" not in fallback:
-                fallback["Twitter/X"] = link
 
-        # Facebook
+        # Facebook (must be clean path)
         elif "facebook.com" in l:
-            best["Facebook"] = link
+            parts = l.split("facebook.com/")
+            if len(parts) > 1 and company_lower in parts[1]:
+                best["Facebook"] = link
 
-        # Instagram
+        # Instagram (must be direct handle)
         elif "instagram.com" in l:
-            best["Instagram"] = link
-
-    # Add fallback if needed
-    for k, v in fallback.items():
-        if k not in best:
-            best[k] = v
+            parts = l.split("instagram.com/")
+            if len(parts) > 1 and company_lower in parts[1]:
+                best["Instagram"] = link
 
     return [{"platform": k, "url": v} for k, v in best.items()]
 
