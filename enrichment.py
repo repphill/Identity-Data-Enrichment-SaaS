@@ -66,11 +66,12 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 Social selection (UPDATED FILTERS)
+# 🌐 Social selection (HIGH ACCURACY)
 def find_social_links(links, company):
     company_lower = company.lower()
 
     best = {}
+    fallback = {}
 
     for link in links:
         l = link.lower()
@@ -79,44 +80,52 @@ def find_social_links(links, company):
         if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
             continue
 
-        # ❌ Remove homepage / generic
+        # ❌ Remove generic homepage links
         if l.endswith(".com/") or l.endswith(".com"):
             continue
 
         if "instagram.com/?" in l:
             continue
 
-        # ❌ STRICT MATCH: must contain company AND not random words
+        # ❌ Must include company name
         if company_lower not in l:
             continue
 
-        # 🔥 EXTRA FILTER (KEY FIX)
-        # Avoid unrelated variations like teslaband, teslaowners, etc.
+        # ❌ Remove fake variations
         bad_words = ["band", "club", "fans", "group", "owners"]
         if any(word in l for word in bad_words):
             continue
 
-        # LinkedIn (prefer exact company page)
+        # LinkedIn (STRICT MATCH FIRST)
         if "linkedin.com/company" in l:
-            if company_lower in l:
+            if f"/{company_lower}" in l:
                 best["LinkedIn"] = link
+            elif "LinkedIn" not in best:
+                fallback["LinkedIn"] = link
 
         # Twitter/X
         elif "twitter.com" in l or "x.com" in l:
             if f"/{company_lower}" in l:
                 best["Twitter/X"] = link
+            elif "Twitter/X" not in fallback:
+                fallback["Twitter/X"] = link
 
-        # Facebook (must be clean path)
+        # Facebook
         elif "facebook.com" in l:
             parts = l.split("facebook.com/")
             if len(parts) > 1 and company_lower in parts[1]:
                 best["Facebook"] = link
 
-        # Instagram (must be direct handle)
+        # Instagram
         elif "instagram.com" in l:
             parts = l.split("instagram.com/")
             if len(parts) > 1 and company_lower in parts[1]:
                 best["Instagram"] = link
+
+    # Add fallback if needed
+    for k, v in fallback.items():
+        if k not in best:
+            best[k] = v
 
     return [{"platform": k, "url": v} for k, v in best.items()]
 
@@ -136,7 +145,7 @@ def find_youtube(links, company):
     return []
 
 
-# 🎥 Extract YouTube details + subscribers
+# 🎥 Extract YouTube details
 def get_youtube_details(link):
     try:
         for suffix in ["/shorts", "/videos", "/playlists"]:
@@ -179,11 +188,12 @@ def enrich_email(email):
 
     results = []
 
-    results += search_google(f"{company} linkedin")
-    results += search_google(f"{company} twitter")
-    results += search_google(f"{company} facebook")
-    results += search_google(f"{company} instagram")
-    results += search_google(f"{company} youtube")
+    # 🔥 Improved queries (KEY UPGRADE)
+    results += search_google(f"{company} official linkedin company")
+    results += search_google(f"{company} official twitter")
+    results += search_google(f"{company} official facebook")
+    results += search_google(f"{company} official instagram")
+    results += search_google(f"{company} official youtube channel")
 
     ranked_links = extract_ranked_links(results, company)
 
