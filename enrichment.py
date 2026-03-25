@@ -19,11 +19,12 @@ def search_google(query):
         res = requests.get(url, params=params)
         data = res.json()
         return data.get("organic_results", [])
-    except:
+    except Exception as e:
+        print("ERROR:", e)
         return []
 
 
-# 🔗 Extract links
+# 🔗 Extract links from results
 def extract_links(results):
     links = []
 
@@ -70,8 +71,7 @@ def enrich_email(email):
 
     results = []
 
-    # 🔥 Strong targeted queries
-    results += search_google(f"{company} official website")
+    # 🔥 Targeted queries
     results += search_google(f"{company} linkedin")
     results += search_google(f"{company} twitter")
     results += search_google(f"{company} facebook")
@@ -87,7 +87,6 @@ def enrich_email(email):
     socials = list({s['url']: s for s in socials}.values())
     youtube = list(set(youtube))
 
-    # Confidence logic
     confidence = "high" if socials or youtube else "low"
 
     return {
