@@ -3,7 +3,7 @@ import requests
 SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
 
 
-# 🔍 Search
+# 🔍 Search via SerpAPI
 def search_google(query):
     url = "https://serpapi.com/search"
 
@@ -18,11 +18,12 @@ def search_google(query):
         res = requests.get(url, params=params)
         data = res.json()
         return data.get("organic_results", [])
-    except:
+    except Exception as e:
+        print("ERROR:", e)
         return []
 
 
-# 🧠 SCORE LINKS (LESS STRICT)
+# 🧠 Score links (balanced)
 def score_link(link, company):
     l = link.lower()
     company = company.lower()
@@ -38,11 +39,11 @@ def score_link(link, company):
     if "official" in l:
         score += 10
 
-    # Penalize junk lightly (NOT too aggressive)
-    if "video" in l or "news" in l:
+    # Light penalties (not too aggressive)
+    if any(x in l for x in ["video", "news"]):
         score -= 10
 
-    if "group" in l:
+    if "group" in l or "marketplace" in l:
         score -= 20
 
     return score
@@ -65,7 +66,7 @@ def extract_ranked_links(results, company):
     return [link for _, link in scored]
 
 
-# 🌐 SOCIAL SELECTION (RELAXED)
+# 🌐 Social selection (FIXED VERSION)
 def find_social_links(links, company):
     company_lower = company.lower()
 
@@ -83,12 +84,12 @@ def find_social_links(links, company):
         if "linkedin.com/company" in l:
             best["LinkedIn"] = link
 
-        # Twitter/X (PRIORITY FIX)
+        # Twitter/X (prefer exact match)
         elif "twitter.com" in l or "x.com" in l:
             if f"/{company_lower}" in l:
-                best["Twitter/X"] = link  # exact match wins
+                best["Twitter/X"] = link
             elif "Twitter/X" not in fallback:
-                fallback["Twitter/X"] = link  # backup option
+                fallback["Twitter/X"] = link
 
         # Facebook
         elif "facebook.com" in l:
@@ -98,25 +99,32 @@ def find_social_links(links, company):
         elif "instagram.com" in l:
             best["Instagram"] = link
 
-    # Merge best + fallback
+    # Merge fallback if needed
     for k, v in fallback.items():
         if k not in best:
             best[k] = v
 
     return [{"platform": k, "url": v} for k, v in best.items()]
 
-# 🎥 YOUTUBE (RELAXED)
-def find_youtube(links):
-    yt = []
 
+# 🎥 YouTube selection
+def find_youtube(links, company):
+    company_lower = company.lower()
+
+    # Prefer @handle
+    for link in links:
+        if f"youtube.com/@{company_lower}" in link.lower():
+            return [link]
+
+    # fallback
     for link in links:
         if "youtube.com" in link:
-            yt.append(link)
+            return [link]
 
-    return list(set(yt))[:1]
+    return []
 
 
-# 🎥 Extract name
+# 🎥 Extract channel name
 def get_youtube_details(link):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -141,7 +149,7 @@ def get_youtube_details(link):
         }
 
 
-# 🧠 MAIN FUNCTION
+# 🧠 MAIN FUNCTION (FIXED CALL)
 def enrich_email(email):
     domain = email.split("@")[-1]
     company = domain.replace(".com", "")
@@ -156,8 +164,9 @@ def enrich_email(email):
 
     ranked_links = extract_ranked_links(results, company)
 
-    socials = find_social_links(ranked_links)
-    youtube_links = find_youtube(ranked_links)
+    # ✅ FIXED HERE
+    socials = find_social_links(ranked_links, company)
+    youtube_links = find_youtube(ranked_links, company)
 
     youtube = [get_youtube_details(link) for link in youtube_links]
 
