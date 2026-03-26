@@ -2,21 +2,20 @@ import requests
 import re
 
 # =========================
-# 🔍 SEARCH FUNCTION
+# 🔍 SEARCH
 # =========================
 def search_web(query):
     url = f"https://duckduckgo.com/html/?q={query}"
     headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        return response.text
+        return requests.get(url, headers=headers, timeout=10).text
     except:
         return ""
 
 
 # =========================
-# 🔍 EXTRACT LINKS
+# 🔗 EXTRACT LINKS
 # =========================
 def extract_links(html):
     return re.findall(r'href="(https?://[^"]+)"', html)
@@ -32,35 +31,65 @@ def clean_links(links):
             continue
         if "javascript" in link:
             continue
-        clean.append(link)
+        clean.append(link.split("?")[0])
     return list(set(clean))
 
 
 # =========================
-# 👤 USERNAME EXTRACTION
+# 👤 USERNAME
 # =========================
 def extract_username(email):
     return email.split("@")[0].lower()
 
 
 # =========================
-# 🧠 PERSONAL EMAIL DETECTION
+# 🧠 PERSONAL EMAIL CHECK
 # =========================
 def is_personal_email(domain):
-    personal_domains = [
-        "gmail.com",
-        "yahoo.com",
-        "hotmail.com",
-        "outlook.com",
-        "icloud.com"
+    return domain.lower() in [
+        "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com"
     ]
-    return domain.lower() in personal_domains
 
 
 # =========================
-# 🔗 FIND SOCIAL LINKS
+# 🔄 USERNAME VARIATIONS
 # =========================
-def find_social_links(links, keyword):
+def username_variations(username):
+    return [
+        username,
+        username.replace(".", ""),
+        username.replace("_", ""),
+        username.replace(".", "_"),
+        username.replace("_", "."),
+    ]
+
+
+# =========================
+# 🧠 SCORING FUNCTION
+# =========================
+def score_link(link, variations):
+    score = 0
+    link_lower = link.lower()
+
+    for v in variations:
+        if v in link_lower:
+            score += 5
+
+    # bonus for clean profiles
+    if "/in/" in link or "/@" in link:
+        score += 3
+
+    # penalize junk
+    if "video" in link or "share" in link:
+        score -= 3
+
+    return score
+
+
+# =========================
+# 🔗 FIND SOCIALS (SMART)
+# =========================
+def find_social_links(links, username):
     socials = []
 
     platforms = {
@@ -70,37 +99,53 @@ def find_social_links(links, keyword):
         "Facebook": "facebook.com"
     }
 
+    variations = username_variations(username)
+
     for platform, domain in platforms.items():
+        scored = []
+
         for link in links:
-            if domain in link and keyword in link.lower():
-                if "share" in link or "video" in link:
-                    continue
-                socials.append({
-                    "platform": platform,
-                    "url": link.split("?")[0]
-                })
-                break
+            if domain in link:
+                s = score_link(link, variations)
+                if s > 0:
+                    scored.append((link, s))
+
+        # sort best match first
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        if scored:
+            best = scored[0][0]
+            socials.append({
+                "platform": platform,
+                "url": best
+            })
 
     return socials
 
 
 # =========================
-# 📺 FIND YOUTUBE
+# 📺 YOUTUBE (SMART)
 # =========================
-def find_youtube(links, keyword):
-    results = []
+def find_youtube(links, username):
+    variations = username_variations(username)
+    scored = []
 
     for link in links:
-        if "youtube.com" in link and keyword in link.lower():
-            if "watch" in link:
-                continue
-            results.append({
-                "url": link.split("?")[0],
-                "name": keyword.capitalize(),
-                "subscribers": "Unknown"
-            })
+        if "youtube.com" in link and "watch" not in link:
+            s = score_link(link, variations)
+            if s > 0:
+                scored.append((link, s))
 
-    return results[:1]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    if scored:
+        return [{
+            "url": scored[0][0],
+            "name": username.capitalize(),
+            "subscribers": "Unknown"
+        }]
+
+    return []
 
 
 # =========================
@@ -110,33 +155,34 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
-    # 🧠 DECIDE SEARCH TYPE
+    # 🔍 DECIDE MODE
     if is_personal_email(domain):
-        search_term = username
+        search_terms = username_variations(username)
         company = username
     else:
         company = domain.split(".")[0]
-        search_term = company
+        search_terms = [company]
 
-    # 🔍 SEARCH WEB
     html = ""
-    html += search_web(f"{search_term} linkedin")
-    html += search_web(f"{search_term} instagram")
-    html += search_web(f"{search_term} twitter")
-    html += search_web(f"{search_term} youtube")
 
-    # 🔗 EXTRACT LINKS
-    links = extract_links(html)
-    links = clean_links(links)
+    for term in search_terms:
+        html += search_web(f"{term} linkedin")
+        html += search_web(f"{term} instagram")
+        html += search_web(f"{term} twitter")
+        html += search_web(f"{term} youtube")
 
-    # 🔍 FIND SOCIALS
-    socials = find_social_links(links, search_term)
+    links = clean_links(extract_links(html))
 
-    # 📺 YOUTUBE
-    youtube = find_youtube(links, search_term)
+    socials = find_social_links(links, username)
+    youtube = find_youtube(links, username)
 
-    # 🎯 CONFIDENCE
-    confidence = "high" if socials else "low"
+    # 🔥 CONFIDENCE SCORE
+    if len(socials) >= 3:
+        confidence = "high"
+    elif socials:
+        confidence = "medium"
+    else:
+        confidence = "low"
 
     return {
         "email": email,
