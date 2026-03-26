@@ -1,36 +1,79 @@
 import requests
 import re
+import os
 
 # =========================
-# 🔍 SEARCH
+# 🔑 SERP API KEY
+# =========================
+SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
+
+
+# =========================
+# 🔍 SERPAPI SEARCH (PRIMARY)
+# =========================
+def serp_search(query):
+    try:
+        url = "https://serpapi.com/search"
+
+        params = {
+            "q": query,
+            "api_key": SERP_API_KEY,
+            "engine": "google"
+        }
+
+        res = requests.get(url, params=params)
+        data = res.json()
+
+        links = []
+        for result in data.get("organic_results", []):
+            link = result.get("link")
+            if link:
+                links.append(link)
+
+        return links
+
+    except Exception as e:
+        print("SERP ERROR:", e)
+        return []
+
+
+# =========================
+# 🔍 DUCKDUCKGO (FALLBACK)
+# =========================
+def duck_search(query):
+    try:
+        url = f"https://duckduckgo.com/html/?q={query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        res = requests.get(url, headers=headers, timeout=10)
+        html = res.text
+
+        links = re.findall(r'href="(https?://[^"]+)"', html)
+
+        clean = []
+        for link in links:
+            if "duckduckgo" in link:
+                continue
+            clean.append(link.split("?")[0])
+
+        return list(set(clean))
+
+    except:
+        return []
+
+
+# =========================
+# 🔥 HYBRID SEARCH
 # =========================
 def search_web(query):
-    url = f"https://duckduckgo.com/html/?q={query}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    links = serp_search(query)
 
-    try:
-        return requests.get(url, headers=headers, timeout=10).text
-    except:
-        return ""
+    # 🔥 fallback if no results
+    if not links:
+        print("Using DuckDuckGo fallback...")
+        links = duck_search(query)
 
-
-# =========================
-# 🔗 EXTRACT LINKS
-# =========================
-def extract_links(html):
-    return re.findall(r'href="(https?://[^"]+)"', html)
-
-
-# =========================
-# 🧠 CLEAN LINKS
-# =========================
-def clean_links(links):
-    clean = []
-    for link in links:
-        if any(x in link for x in ["duckduckgo", "google", "bing", "javascript"]):
-            continue
-        clean.append(link.split("?")[0])
-    return list(set(clean))
+    return links
 
 
 # =========================
@@ -41,7 +84,7 @@ def extract_username(email):
 
 
 # =========================
-# 🧠 PERSONAL EMAIL CHECK
+# 🧠 PERSONAL EMAIL
 # =========================
 def is_personal_email(domain):
     return domain.lower() in [
@@ -64,7 +107,7 @@ def username_variations(username):
 
 
 # =========================
-# 🧠 EXTRACT HANDLE FROM URL
+# 🧠 EXTRACT HANDLE
 # =========================
 def extract_handle(url):
     parts = url.rstrip("/").split("/")
@@ -72,7 +115,7 @@ def extract_handle(url):
 
 
 # =========================
-# 🧠 BASE SCORE
+# 🧠 SCORE LINK
 # =========================
 def score_link(link, variations):
     score = 0
@@ -92,34 +135,7 @@ def score_link(link, variations):
 
 
 # =========================
-# 🧠 AI MATCH BOOST
-# =========================
-def boost_cross_platform(socials):
-    handles = [extract_handle(s["url"]) for s in socials]
-
-    boosted = []
-
-    for s in socials:
-        handle = extract_handle(s["url"])
-        score = s["score"]
-
-        # 🔥 boost if same handle appears multiple times
-        match_count = handles.count(handle)
-
-        if match_count >= 2:
-            score += 20
-
-        boosted.append({
-            "platform": s["platform"],
-            "url": s["url"],
-            "score": score
-        })
-
-    return boosted
-
-
-# =========================
-# 🔗 SOCIAL MATCHING
+# 🔗 FIND SOCIALS
 # =========================
 def find_social_links(links, username):
     socials = []
@@ -147,14 +163,12 @@ def find_social_links(links, username):
 
         if scored:
             best_link, best_score = scored[0]
+
             socials.append({
                 "platform": platform,
                 "url": best_link,
                 "score": best_score
             })
-
-    # 🔥 APPLY AI BOOST
-    socials = boost_cross_platform(socials)
 
     return socials
 
@@ -207,6 +221,7 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
+    # 🔍 SEARCH MODE
     if is_personal_email(domain):
         variations = username_variations(username)
 
@@ -232,12 +247,16 @@ def enrich_email(email):
             f"{company} youtube"
         ]
 
-    html = ""
+    # 🔍 RUN SEARCH
+    links = []
+
     for q in search_queries:
-        html += search_web(q)
+        results = search_web(q)
+        links.extend(results)
 
-    links = clean_links(extract_links(html))
+    links = list(set(links))
 
+    # 🔗 MATCH
     socials = find_social_links(links, username)
     youtube = find_youtube(links, username)
 
