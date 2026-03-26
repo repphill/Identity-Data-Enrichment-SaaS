@@ -2,7 +2,7 @@ import requests
 import re
 
 # =========================
-# 🔍 SEARCH (STRONGER)
+# 🔍 SEARCH
 # =========================
 def search_web(query):
     url = f"https://duckduckgo.com/html/?q={query}"
@@ -22,22 +22,14 @@ def extract_links(html):
 
 
 # =========================
-# 🧠 CLEAN LINKS (IMPORTANT)
+# 🧠 CLEAN LINKS
 # =========================
 def clean_links(links):
     clean = []
     for link in links:
-        if "duckduckgo.com" in link:
+        if any(x in link for x in ["duckduckgo", "google", "bing", "javascript"]):
             continue
-        if "javascript" in link:
-            continue
-        if "google.com" in link:
-            continue
-        if "bing.com" in link:
-            continue
-
         clean.append(link.split("?")[0])
-
     return list(set(clean))
 
 
@@ -72,7 +64,15 @@ def username_variations(username):
 
 
 # =========================
-# 🧠 SCORING FUNCTION
+# 🧠 EXTRACT HANDLE FROM URL
+# =========================
+def extract_handle(url):
+    parts = url.rstrip("/").split("/")
+    return parts[-1].lower() if parts else ""
+
+
+# =========================
+# 🧠 BASE SCORE
 # =========================
 def score_link(link, variations):
     score = 0
@@ -82,11 +82,9 @@ def score_link(link, variations):
         if v in link_lower:
             score += 15
 
-    # 🔥 strong profile indicators
     if "/in/" in link or "/@" in link:
         score += 10
 
-    # 🚫 junk penalties
     if "video" in link or "share" in link:
         score -= 10
 
@@ -94,7 +92,34 @@ def score_link(link, variations):
 
 
 # =========================
-# 🔗 SOCIAL MATCHING (STRICT)
+# 🧠 AI MATCH BOOST
+# =========================
+def boost_cross_platform(socials):
+    handles = [extract_handle(s["url"]) for s in socials]
+
+    boosted = []
+
+    for s in socials:
+        handle = extract_handle(s["url"])
+        score = s["score"]
+
+        # 🔥 boost if same handle appears multiple times
+        match_count = handles.count(handle)
+
+        if match_count >= 2:
+            score += 20
+
+        boosted.append({
+            "platform": s["platform"],
+            "url": s["url"],
+            "score": score
+        })
+
+    return boosted
+
+
+# =========================
+# 🔗 SOCIAL MATCHING
 # =========================
 def find_social_links(links, username):
     socials = []
@@ -115,7 +140,6 @@ def find_social_links(links, username):
             if domain in link:
                 s = score_link(link, variations)
 
-                # 🔥 ONLY accept strong matches
                 if s >= 15:
                     scored.append((link, s))
 
@@ -123,18 +147,20 @@ def find_social_links(links, username):
 
         if scored:
             best_link, best_score = scored[0]
-
             socials.append({
                 "platform": platform,
                 "url": best_link,
                 "score": best_score
             })
 
+    # 🔥 APPLY AI BOOST
+    socials = boost_cross_platform(socials)
+
     return socials
 
 
 # =========================
-# 📺 YOUTUBE MATCHING
+# 📺 YOUTUBE
 # =========================
 def find_youtube(links, username):
     variations = username_variations(username)
@@ -166,9 +192,9 @@ def find_youtube(links, username):
 # 🎯 CONFIDENCE
 # =========================
 def calculate_confidence(score):
-    if score >= 60:
+    if score >= 80:
         return "high"
-    elif score >= 25:
+    elif score >= 40:
         return "medium"
     else:
         return "low"
@@ -181,7 +207,6 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
-    # 🔍 SEARCH MODE
     if is_personal_email(domain):
         variations = username_variations(username)
 
@@ -207,18 +232,15 @@ def enrich_email(email):
             f"{company} youtube"
         ]
 
-    # 🔍 EXECUTE SEARCHES
     html = ""
     for q in search_queries:
         html += search_web(q)
 
-    # 🔗 PROCESS LINKS
     links = clean_links(extract_links(html))
 
     socials = find_social_links(links, username)
     youtube = find_youtube(links, username)
 
-    # 🔥 TOTAL SCORE
     total_score = sum([s["score"] for s in socials])
 
     if youtube:
