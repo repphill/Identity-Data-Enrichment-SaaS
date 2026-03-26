@@ -60,8 +60,7 @@ def verify_token(request: Request):
 # 💳 TEMP PAYWALL (TEST ONLY)
 # =========================
 def is_paid_user(user):
-    # 🔥 TEMP: only allow this email for now
-    return user.get("email") == "test@test.com"
+    return True
 
 
 # =========================
