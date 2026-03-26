@@ -2,7 +2,7 @@ import requests
 import re
 
 # =========================
-# 🔍 SEARCH
+# 🔍 SEARCH (STRONGER)
 # =========================
 def search_web(query):
     url = f"https://duckduckgo.com/html/?q={query}"
@@ -22,7 +22,7 @@ def extract_links(html):
 
 
 # =========================
-# 🧠 CLEAN LINKS
+# 🧠 CLEAN LINKS (IMPORTANT)
 # =========================
 def clean_links(links):
     clean = []
@@ -31,7 +31,13 @@ def clean_links(links):
             continue
         if "javascript" in link:
             continue
+        if "google.com" in link:
+            continue
+        if "bing.com" in link:
+            continue
+
         clean.append(link.split("?")[0])
+
     return list(set(clean))
 
 
@@ -74,21 +80,21 @@ def score_link(link, variations):
 
     for v in variations:
         if v in link_lower:
-            score += 10
+            score += 15
 
-    # profile bonuses
+    # 🔥 strong profile indicators
     if "/in/" in link or "/@" in link:
-        score += 5
+        score += 10
 
-    # penalties
+    # 🚫 junk penalties
     if "video" in link or "share" in link:
-        score -= 5
+        score -= 10
 
     return max(score, 0)
 
 
 # =========================
-# 🔗 SOCIAL MATCHING
+# 🔗 SOCIAL MATCHING (STRICT)
 # =========================
 def find_social_links(links, username):
     socials = []
@@ -108,13 +114,16 @@ def find_social_links(links, username):
         for link in links:
             if domain in link:
                 s = score_link(link, variations)
-                if s > 0:
+
+                # 🔥 ONLY accept strong matches
+                if s >= 15:
                     scored.append((link, s))
 
         scored.sort(key=lambda x: x[1], reverse=True)
 
         if scored:
             best_link, best_score = scored[0]
+
             socials.append({
                 "platform": platform,
                 "url": best_link,
@@ -134,13 +143,15 @@ def find_youtube(links, username):
     for link in links:
         if "youtube.com" in link and "watch" not in link:
             s = score_link(link, variations)
-            if s > 0:
+
+            if s >= 15:
                 scored.append((link, s))
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
     if scored:
         best_link, best_score = scored[0]
+
         return [{
             "url": best_link,
             "name": username.capitalize(),
@@ -152,12 +163,12 @@ def find_youtube(links, username):
 
 
 # =========================
-# 🎯 CONFIDENCE CALCULATION
+# 🎯 CONFIDENCE
 # =========================
 def calculate_confidence(score):
-    if score >= 40:
+    if score >= 60:
         return "high"
-    elif score >= 20:
+    elif score >= 25:
         return "medium"
     else:
         return "low"
@@ -170,22 +181,38 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
-    # decide search mode
+    # 🔍 SEARCH MODE
     if is_personal_email(domain):
-        search_terms = username_variations(username)
+        variations = username_variations(username)
+
+        search_queries = []
+        for v in variations:
+            search_queries.extend([
+                f'"{v}" site:linkedin.com',
+                f'"{v}" site:instagram.com',
+                f'"{v}" site:x.com',
+                f'"{v}" site:facebook.com',
+                f'"{v}" site:youtube.com'
+            ])
+
         company = username
+
     else:
         company = domain.split(".")[0]
-        search_terms = [company]
 
+        search_queries = [
+            f"{company} linkedin",
+            f"{company} instagram",
+            f"{company} twitter",
+            f"{company} youtube"
+        ]
+
+    # 🔍 EXECUTE SEARCHES
     html = ""
+    for q in search_queries:
+        html += search_web(q)
 
-    for term in search_terms:
-        html += search_web(f"{term} linkedin")
-        html += search_web(f"{term} instagram")
-        html += search_web(f"{term} twitter")
-        html += search_web(f"{term} youtube")
-
+    # 🔗 PROCESS LINKS
     links = clean_links(extract_links(html))
 
     socials = find_social_links(links, username)
