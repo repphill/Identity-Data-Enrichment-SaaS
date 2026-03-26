@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 import csv
 import io
 
@@ -7,15 +9,47 @@ from enrichment import enrich_email
 
 app = FastAPI()
 
+# =========================
+# 🌐 CORS (IMPORTANT)
+# =========================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # =========================
-# 🚀 BULK ENRICH (FIXED)
+# ROOT
+# =========================
+@app.get("/")
+def root():
+    return {"status": "running"}
+
+
+# =========================
+# 🔍 SINGLE EMAIL
+# =========================
+@app.post("/enrich")
+async def enrich(email: str):
+    try:
+        data = enrich_email(email)
+        return JSONResponse(content=data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================
+# 📂 BULK CSV (FULL FIX)
 # =========================
 @app.post("/bulk-enrich")
 async def bulk_enrich(file: UploadFile = File(...)):
     try:
         contents = await file.read()
-        decoded = contents.decode("utf-8")
+
+        # 🔥 FIX: handle encoding safely
+        decoded = contents.decode("utf-8", errors="ignore")
 
         reader = csv.DictReader(io.StringIO(decoded))
 
@@ -33,7 +67,6 @@ async def bulk_enrich(file: UploadFile = File(...)):
 
             data = enrich_email(email)
 
-            # 🔥 Flatten results for CSV output
             socials = {s["platform"]: s["url"] for s in data["social_profiles"]}
             youtube = data["youtube_channels"][0] if data["youtube_channels"] else {}
 
@@ -50,7 +83,7 @@ async def bulk_enrich(file: UploadFile = File(...)):
                 "score": data["score"]
             })
 
-        # 🔥 Convert to CSV
+        # 🔥 BUILD CSV OUTPUT
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=[
             "email", "company", "linkedin", "twitter",
@@ -66,7 +99,9 @@ async def bulk_enrich(file: UploadFile = File(...)):
         return StreamingResponse(
             output,
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=enriched.csv"}
+            headers={
+                "Content-Disposition": "attachment; filename=enriched.csv"
+            }
         )
 
     except Exception as e:
