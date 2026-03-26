@@ -1,220 +1,142 @@
 import requests
 import re
 
-SERP_API_KEY = "322a4b39b63f54322883467960ae962f6198a3bc898de77da993a308c4c76384"
+# =========================
+# 🔍 SEARCH FUNCTION
+# =========================
+def search_web(query):
+    url = f"https://duckduckgo.com/html/?q={query}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        return response.text
+    except:
+        return ""
 
 
-# 🔍 Search via SerpAPI
-def search_google(query):
-    url = "https://serpapi.com/search"
+# =========================
+# 🔍 EXTRACT LINKS
+# =========================
+def extract_links(html):
+    return re.findall(r'href="(https?://[^"]+)"', html)
 
-    params = {
-        "q": query,
-        "api_key": SERP_API_KEY,
-        "engine": "google",
-        "num": 5
+
+# =========================
+# 🧠 CLEAN LINKS
+# =========================
+def clean_links(links):
+    clean = []
+    for link in links:
+        if "duckduckgo.com" in link:
+            continue
+        if "javascript" in link:
+            continue
+        clean.append(link)
+    return list(set(clean))
+
+
+# =========================
+# 👤 USERNAME EXTRACTION
+# =========================
+def extract_username(email):
+    return email.split("@")[0].lower()
+
+
+# =========================
+# 🧠 PERSONAL EMAIL DETECTION
+# =========================
+def is_personal_email(domain):
+    personal_domains = [
+        "gmail.com",
+        "yahoo.com",
+        "hotmail.com",
+        "outlook.com",
+        "icloud.com"
+    ]
+    return domain.lower() in personal_domains
+
+
+# =========================
+# 🔗 FIND SOCIAL LINKS
+# =========================
+def find_social_links(links, keyword):
+    socials = []
+
+    platforms = {
+        "LinkedIn": "linkedin.com",
+        "Twitter/X": "x.com",
+        "Instagram": "instagram.com",
+        "Facebook": "facebook.com"
     }
 
-    try:
-        res = requests.get(url, params=params)
-        data = res.json()
-        return data.get("organic_results", [])
-    except Exception as e:
-        print("ERROR:", e)
-        return []
+    for platform, domain in platforms.items():
+        for link in links:
+            if domain in link and keyword in link.lower():
+                if "share" in link or "video" in link:
+                    continue
+                socials.append({
+                    "platform": platform,
+                    "url": link.split("?")[0]
+                })
+                break
+
+    return socials
 
 
-# 🧠 Score links
-def score_link(link, company):
-    l = link.lower()
-    company = company.lower()
-
-    score = 0
-
-    if company in l:
-        score += 30
-
-    if f"/{company}" in l:
-        score += 20
-
-    if "official" in l:
-        score += 10
-
-    if any(x in l for x in ["video", "news"]):
-        score -= 10
-
-    if any(x in l for x in ["group", "marketplace"]):
-        score -= 20
-
-    return score
-
-
-# 🔗 Rank links
-def extract_ranked_links(results, company):
-    scored = []
-
-    for r in results:
-        link = r.get("link")
-        if not link:
-            continue
-
-        s = score_link(link, company)
-        scored.append((s, link))
-
-    scored.sort(reverse=True)
-
-    return [link for _, link in scored]
-
-
-# 🔥 CLEAN URL (KEY FUNCTION)
-def clean_url(url):
-    # Remove query params
-    url = url.split("?")[0]
-
-    # Normalize LinkedIn domains
-    url = url.replace("ae.linkedin.com", "www.linkedin.com")
-    url = url.replace("rs.linkedin.com", "www.linkedin.com")
-
-    # Remove trailing slash
-    if url.endswith("/"):
-        url = url[:-1]
-
-    return url
-
-
-# 🌐 Social selection (FINAL VERSION)
-def find_social_links(links, company):
-    company_lower = company.lower()
-
-    best = {}
-    fallback = {}
-
-    for link in links:
-        link = clean_url(link)
-        l = link.lower()
-
-        # ❌ Skip junk
-        if any(x in l for x in ["group", "search", "marketplace", "/posts/", "video"]):
-            continue
-
-        # ❌ Remove homepage links
-        if l.endswith(".com") or l.endswith(".com/"):
-            continue
-
-        # ❌ Must include company
-        if company_lower not in l:
-            continue
-
-        # ❌ Remove fake variations
-        bad_words = ["band", "club", "fans", "owners", "unofficial"]
-        if any(word in l for word in bad_words):
-            continue
-
-        # LinkedIn (STRICT)
-        if "linkedin.com/company" in l:
-            if f"/{company_lower}" in l:
-                best["LinkedIn"] = link
-
-        # Twitter/X
-        elif "twitter.com" in l or "x.com" in l:
-            if f"/{company_lower}" in l:
-                best["Twitter/X"] = link
-            elif "Twitter/X" not in fallback:
-                fallback["Twitter/X"] = link
-
-        # Facebook (STRICT)
-        elif "facebook.com" in l:
-            parts = l.split("facebook.com/")
-            if len(parts) > 1 and company_lower in parts[1]:
-                best["Facebook"] = link
-
-        # Instagram (STRICT)
-        elif "instagram.com" in l:
-            parts = l.split("instagram.com/")
-            if len(parts) > 1 and company_lower in parts[1]:
-                best["Instagram"] = link
-
-    # Add fallback if needed
-    for k, v in fallback.items():
-        if k not in best:
-            best[k] = v
-
-    return [{"platform": k, "url": v} for k, v in best.items()]
-
-
-# 🎥 YouTube selection
-def find_youtube(links, company):
-    company_lower = company.lower()
-
-    for link in links:
-        if f"youtube.com/@{company_lower}" in link.lower():
-            return [link]
-
-    for link in links:
-        if "youtube.com" in link and company_lower in link.lower():
-            return [link]
-
-    return []
-
-
-# 🎥 Extract YouTube details
-def get_youtube_details(link):
-    try:
-        for suffix in ["/shorts", "/videos", "/playlists"]:
-            if suffix in link:
-                link = link.split(suffix)[0]
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(link, headers=headers, timeout=5)
-
-        html = res.text
-
-        name = "YouTube Channel"
-        if "<title>" in html:
-            name = html.split("<title>")[1].split("</title>")[0]
-            name = name.replace("- YouTube", "").strip()
-
-        subs = "Unknown"
-        match = re.search(r'"subscriberCountText".*?"simpleText":"([^"]+)"', html)
-        if match:
-            subs = match.group(1)
-
-        return {
-            "url": link,
-            "name": name,
-            "subscribers": subs
-        }
-
-    except:
-        return {
-            "url": link,
-            "name": "Unknown",
-            "subscribers": "Unknown"
-        }
-
-
-# 🧠 MAIN FUNCTION
-def enrich_email(email):
-    domain = email.split("@")[-1]
-    company = domain.replace(".com", "")
-
+# =========================
+# 📺 FIND YOUTUBE
+# =========================
+def find_youtube(links, keyword):
     results = []
 
-    # 🔥 Improved queries
-    results += search_google(f"{company} official linkedin company")
-    results += search_google(f"{company} official twitter")
-    results += search_google(f"{company} official facebook")
-    results += search_google(f"{company} official instagram")
-    results += search_google(f"{company} official youtube channel")
+    for link in links:
+        if "youtube.com" in link and keyword in link.lower():
+            if "watch" in link:
+                continue
+            results.append({
+                "url": link.split("?")[0],
+                "name": keyword.capitalize(),
+                "subscribers": "Unknown"
+            })
 
-    ranked_links = extract_ranked_links(results, company)
+    return results[:1]
 
-    socials = find_social_links(ranked_links, company)
-    youtube_links = find_youtube(ranked_links, company)
 
-    youtube = [get_youtube_details(link) for link in youtube_links]
+# =========================
+# 🚀 MAIN FUNCTION
+# =========================
+def enrich_email(email):
+    domain = email.split("@")[1]
+    username = extract_username(email)
 
-    confidence = "high" if socials or youtube else "low"
+    # 🧠 DECIDE SEARCH TYPE
+    if is_personal_email(domain):
+        search_term = username
+        company = username
+    else:
+        company = domain.split(".")[0]
+        search_term = company
+
+    # 🔍 SEARCH WEB
+    html = ""
+    html += search_web(f"{search_term} linkedin")
+    html += search_web(f"{search_term} instagram")
+    html += search_web(f"{search_term} twitter")
+    html += search_web(f"{search_term} youtube")
+
+    # 🔗 EXTRACT LINKS
+    links = extract_links(html)
+    links = clean_links(links)
+
+    # 🔍 FIND SOCIALS
+    socials = find_social_links(links, search_term)
+
+    # 📺 YOUTUBE
+    youtube = find_youtube(links, search_term)
+
+    # 🎯 CONFIDENCE
+    confidence = "high" if socials else "low"
 
     return {
         "email": email,
