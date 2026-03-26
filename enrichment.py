@@ -47,7 +47,8 @@ def extract_username(email):
 # =========================
 def is_personal_email(domain):
     return domain.lower() in [
-        "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com"
+        "gmail.com", "yahoo.com", "hotmail.com",
+        "outlook.com", "icloud.com"
     ]
 
 
@@ -55,17 +56,17 @@ def is_personal_email(domain):
 # 🔄 USERNAME VARIATIONS
 # =========================
 def username_variations(username):
-    return [
+    return list(set([
         username,
         username.replace(".", ""),
         username.replace("_", ""),
         username.replace(".", "_"),
         username.replace("_", "."),
-    ]
+    ]))
 
 
 # =========================
-# 🧠 SCORING FUNCTION
+# 🧠 SCORING
 # =========================
 def score_link(link, variations):
     score = 0
@@ -73,21 +74,21 @@ def score_link(link, variations):
 
     for v in variations:
         if v in link_lower:
-            score += 5
+            score += 10
 
-    # bonus for clean profiles
+    # bonus for profile-like URLs
     if "/in/" in link or "/@" in link:
-        score += 3
+        score += 5
 
-    # penalize junk
+    # penalty for junk
     if "video" in link or "share" in link:
-        score -= 3
+        score -= 5
 
-    return score
+    return max(score, 0)
 
 
 # =========================
-# 🔗 FIND SOCIALS (SMART)
+# 🔗 FIND SOCIALS
 # =========================
 def find_social_links(links, username):
     socials = []
@@ -110,21 +111,21 @@ def find_social_links(links, username):
                 if s > 0:
                     scored.append((link, s))
 
-        # sort best match first
         scored.sort(key=lambda x: x[1], reverse=True)
 
         if scored:
-            best = scored[0][0]
+            best_link, best_score = scored[0]
             socials.append({
                 "platform": platform,
-                "url": best
+                "url": best_link,
+                "score": best_score
             })
 
     return socials
 
 
 # =========================
-# 📺 YOUTUBE (SMART)
+# 📺 YOUTUBE
 # =========================
 def find_youtube(links, username):
     variations = username_variations(username)
@@ -139,13 +140,27 @@ def find_youtube(links, username):
     scored.sort(key=lambda x: x[1], reverse=True)
 
     if scored:
+        best_link, best_score = scored[0]
         return [{
-            "url": scored[0][0],
+            "url": best_link,
             "name": username.capitalize(),
-            "subscribers": "Unknown"
+            "subscribers": "Unknown",
+            "score": best_score
         }]
 
     return []
+
+
+# =========================
+# 🎯 FINAL CONFIDENCE
+# =========================
+def calculate_confidence(total_score):
+    if total_score >= 40:
+        return "high"
+    elif total_score >= 20:
+        return "medium"
+    else:
+        return "low"
 
 
 # =========================
@@ -155,7 +170,7 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
-    # 🔍 DECIDE MODE
+    # decide mode
     if is_personal_email(domain):
         search_terms = username_variations(username)
         company = username
@@ -176,13 +191,13 @@ def enrich_email(email):
     socials = find_social_links(links, username)
     youtube = find_youtube(links, username)
 
-    # 🔥 CONFIDENCE SCORE
-    if len(socials) >= 3:
-        confidence = "high"
-    elif socials:
-        confidence = "medium"
-    else:
-        confidence = "low"
+    # 🔥 TOTAL SCORE
+    total_score = sum([s["score"] for s in socials])
+
+    if youtube:
+        total_score += youtube[0]["score"]
+
+    confidence = calculate_confidence(total_score)
 
     return {
         "email": email,
@@ -190,5 +205,6 @@ def enrich_email(email):
         "company": company,
         "social_profiles": socials,
         "youtube_channels": youtube,
-        "confidence": confidence
+        "confidence": confidence,
+        "score": total_score
     }
