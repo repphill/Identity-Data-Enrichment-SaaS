@@ -66,7 +66,7 @@ def username_variations(username):
 
 
 # =========================
-# 🧠 SCORING
+# 🧠 SCORING FUNCTION
 # =========================
 def score_link(link, variations):
     score = 0
@@ -76,11 +76,11 @@ def score_link(link, variations):
         if v in link_lower:
             score += 10
 
-    # bonus for profile-like URLs
+    # profile bonuses
     if "/in/" in link or "/@" in link:
         score += 5
 
-    # penalty for junk
+    # penalties
     if "video" in link or "share" in link:
         score -= 5
 
@@ -88,7 +88,7 @@ def score_link(link, variations):
 
 
 # =========================
-# 🔗 FIND SOCIALS
+# 🔗 SOCIAL MATCHING
 # =========================
 def find_social_links(links, username):
     socials = []
@@ -125,7 +125,7 @@ def find_social_links(links, username):
 
 
 # =========================
-# 📺 YOUTUBE
+# 📺 YOUTUBE MATCHING
 # =========================
 def find_youtube(links, username):
     variations = username_variations(username)
@@ -152,12 +152,12 @@ def find_youtube(links, username):
 
 
 # =========================
-# 🎯 FINAL CONFIDENCE
+# 🎯 CONFIDENCE CALCULATION
 # =========================
-def calculate_confidence(total_score):
-    if total_score >= 40:
+def calculate_confidence(score):
+    if score >= 40:
         return "high"
-    elif total_score >= 20:
+    elif score >= 20:
         return "medium"
     else:
         return "low"
@@ -170,7 +170,7 @@ def enrich_email(email):
     domain = email.split("@")[1]
     username = extract_username(email)
 
-    # decide mode
+    # decide search mode
     if is_personal_email(domain):
         search_terms = username_variations(username)
         company = username
